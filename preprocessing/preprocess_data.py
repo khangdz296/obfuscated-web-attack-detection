@@ -16,6 +16,7 @@ DATA_DIR = PROJECT_ROOT / "DataSet"
 KAGGLE_PATH = str(DATA_DIR / "SQLInjection_XSS_MixDataset.1.0.0.csv")
 CSIC_PATH = str(DATA_DIR / "csic_database.csv")
 OBFU_PATH = str(DATA_DIR / "obfu_http_dataset_v2.csv")
+OBFU_PAYLOAD_PATH = str(DATA_DIR / "obfu_payload.csv")
 OUTPUT_DIR = str(PROJECT_ROOT / "cnn_lstm" / "artifacts" / "processed_data")
 RANDOM_STATE = 42
 DEFAULT_SPLIT_PROTOCOL = "random_stratified_row"
@@ -435,6 +436,43 @@ def load_obfu_http(path: str, drop_second_order_triggers: bool = True) -> pd.Dat
     return out
 
 
+def load_obfu_payload(path: str) -> pd.DataFrame:
+    """Load the payload-only obfuscation dataset (payload/label/attack_type/technique/family).
+
+    Unlike obfu_http, rows here are bare parameter values, so they go through
+    the same neutral HTTP wrapper as Kaggle. The shipped `family` column ties
+    every obfuscated variant back to its seed payload, which is exactly what
+    the family_group split protocol needs to keep variants out of the test set.
+    """
+    df = pd.read_csv(path)
+    required = {"payload", "label"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"{path} is missing columns: {sorted(missing)}")
+
+    def column(name: str) -> pd.Series:
+        return df[name].fillna("").astype(str) if name in df.columns else pd.Series("", index=df.index)
+
+    wrapped = df["payload"].apply(wrap_payload_as_request)
+    out = pd.DataFrame()
+    out["payload"] = wrapped.str[0]
+    out["raw_payload"] = wrapped.str[1]
+    out["label"] = to_binary_label(df["label"])
+    out["source"] = "obfu_payload"
+    out["attack_type"] = column("attack_type").str.lower()
+    out["obfuscation_type"] = column("technique")
+    out["pattern_category"] = ""
+    out["difficulty_level"] = ""
+    out["technique"] = column("technique")
+    out["family"] = column("family")
+    family = column("family").str.strip()
+    out["split_group"] = family.where(
+        family.str.len() > 0,
+        out["raw_payload"].apply(canonical_payload_family),
+    )
+    return out
+
+
 def split_dataset_by_column(df: pd.DataFrame, split_column: str = "split") -> dict[str, pd.DataFrame]:
     """Use the split assignment shipped with the dataset instead of re-splitting it."""
     if split_column not in df.columns:
@@ -656,7 +694,7 @@ def select_balanced_group_holdout(
     return selected
 
 
-DATASET_SOURCES = ("kaggle", "csic", "obfu_http")
+DATASET_SOURCES = ("kaggle", "csic", "obfu_http", "obfu_payload")
 
 
 def load_clean_datasets(
@@ -664,6 +702,7 @@ def load_clean_datasets(
     csic_path: str,
     obfu_path: str,
     sources: list[str] | None = None,
+    obfu_payload_path: str = OBFU_PAYLOAD_PATH,
 ) -> dict[str, pd.DataFrame]:
     """Load and clean the requested sources.
 
@@ -681,6 +720,10 @@ def load_clean_datasets(
                               deduplicate=True, drop_label_conflicts=True),
         "obfu_http": lambda: clean(load_obfu_http(obfu_path),
                                    deduplicate=True, drop_label_conflicts=False),
+        # The generator occasionally emits the same text under both labels
+        # (~200 rows); those are unlearnable, so they are dropped here.
+        "obfu_payload": lambda: clean(load_obfu_payload(obfu_payload_path),
+                                      deduplicate=True, drop_label_conflicts=True),
     }
 
     if not sources or "all" in sources:
@@ -738,8 +781,13 @@ def build_dataset_splits(
     val_size: float,
     seed: int,
     split_protocol: str = DEFAULT_SPLIT_PROTOCOL,
+    obfu_payload_path: str = OBFU_PAYLOAD_PATH,
+    sources: list[str] | None = None,
 ) -> tuple[dict[str, dict[str, pd.DataFrame]], dict]:
-    datasets = load_clean_datasets(kaggle_path, csic_path, obfu_path)
+    datasets = load_clean_datasets(
+        kaggle_path, csic_path, obfu_path,
+        sources=sources, obfu_payload_path=obfu_payload_path,
+    )
     dataset_splits = split_all_datasets(
         datasets, test_size, val_size, seed, split_protocol=split_protocol
     )
@@ -782,6 +830,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--kaggle-path", default=KAGGLE_PATH)
     parser.add_argument("--csic-path", default=CSIC_PATH)
     parser.add_argument("--obfu-path", default=OBFU_PATH)
+    parser.add_argument("--obfu-payload-path", default=OBFU_PAYLOAD_PATH)
+    parser.add_argument(
+        "--datasets",
+        nargs="+",
+        default=["all"],
+        help=f"Sources to preprocess: all or any of {list(DATASET_SOURCES)}.",
+    )
     parser.add_argument("--output-dir", default=OUTPUT_DIR)
     parser.add_argument("--test-size", type=float, default=0.2)
     parser.add_argument("--val-size", type=float, default=0.1)
@@ -807,6 +862,8 @@ def main() -> None:
         args.val_size,
         args.seed,
         args.split_protocol,
+        obfu_payload_path=args.obfu_payload_path,
+        sources=args.datasets,
     )
     save_dataset_splits(dataset_splits, output_dir)
 

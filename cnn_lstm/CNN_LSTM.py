@@ -58,6 +58,7 @@ from preprocessing import preprocess_data as prep
 KAGGLE_PATH = prep.KAGGLE_PATH
 CSIC_PATH = prep.CSIC_PATH
 OBFUSCATION_PATH = prep.OBFU_PATH
+OBFU_PAYLOAD_PATH = prep.OBFU_PAYLOAD_PATH
 OUTPUT_DIR = str(MODEL_DIR / "artifacts_cnn_lstm_by_dataset")
 MAX_LEN = 768
 EMBEDDING_DIM = 64
@@ -296,10 +297,11 @@ def build_source_datasets(args: argparse.Namespace) -> tuple[dict[str, dict[str,
     datasets = prep.load_clean_datasets(
         args.kaggle_path, args.csic_path, args.obfuscation_path,
         sources=getattr(args, "datasets", None),
+        obfu_payload_path=getattr(args, "obfu_payload_path", OBFU_PAYLOAD_PATH),
     )
     sampled_datasets = {}
     for name, frame in datasets.items():
-        sample_size = args.obfu_sample_size if name == "obfu_http" else args.sample_size
+        sample_size = args.obfu_sample_size if name.startswith("obfu") else args.sample_size
         if sample_size and sample_size < len(frame):
             if "split" in frame.columns:
                 # Sample inside each split so the shipped held-out design survives.
@@ -591,6 +593,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--kaggle-path", default=KAGGLE_PATH)
     parser.add_argument("--csic-path", default=CSIC_PATH)
     parser.add_argument("--obfuscation-path", default=OBFUSCATION_PATH)
+    parser.add_argument("--obfu-payload-path", default=OBFU_PAYLOAD_PATH)
     parser.add_argument("--output-dir", default=OUTPUT_DIR)
     parser.add_argument("--max-len", type=int, default=MAX_LEN)
     parser.add_argument("--embedding-dim", type=int, default=EMBEDDING_DIM)
@@ -611,12 +614,12 @@ def parse_args() -> argparse.Namespace:
         help="Tune threshold for attack F1 on validation data or keep fixed 0.5.",
     )
     parser.add_argument("--sample-size", type=int, default=None, help="Optional quick-run sample size for each non-obfuscation dataset.")
-    parser.add_argument("--obfu-sample-size", type=int, default=None, help="Optional quick-run sample size for the obfuscation dataset.")
+    parser.add_argument("--obfu-sample-size", type=int, default=None, help="Optional quick-run sample size for the obfuscation datasets (obfu_http, obfu_payload).")
     parser.add_argument(
         "--train-sources",
         nargs="+",
         default=["all"],
-        help="Datasets to train separate models for: all, kaggle, csic, obfu_http.",
+        help="Datasets to train separate models for: all, kaggle, csic, obfu_http, obfu_payload.",
     )
     # Separate from --train-sources: this controls what gets *loaded*. Loading a
     # source costs a per-row serialisation pass, so skipping the ones you are
@@ -626,7 +629,7 @@ def parse_args() -> argparse.Namespace:
         "--datasets",
         nargs="+",
         default=["all"],
-        help="Datasets to load at all: all, kaggle, csic, obfu_http. "
+        help="Datasets to load at all: all, kaggle, csic, obfu_http, obfu_payload. "
              "Use a subset to skip loading sources you are not evaluating on.",
     )
     return parser.parse_args()
