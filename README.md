@@ -1,204 +1,237 @@
-# CNN-LSTM Web Attack Detector
+﻿# Obfuscated Web Attack Detection
 
-This project contains a char-level Hybrid 1D-CNN + LSTM model for web attack detection and a Flask web app for interactive inference.
+Dự án phát hiện tấn công web SQL Injection và XSS ở mức ký tự
+(`char-level`). Mô hình chính là Hybrid 1D-CNN + LSTM, kèm các baseline
+CNN-only và LSTM-only để so sánh.
 
-The workflow has two stages:
-
-1. Train and evaluate the CNN-LSTM model with `cnn_lstm/CNN_LSTM.py`.
-2. Run the Flask web app in `webapp/` to classify user input with the trained model.
-
-## Project Structure
+## Cấu Trúc Dự Án
 
 ```text
 .
++-- dataset/
+|   +-- SQLInjection_XSS_MixDataset.1.0.0.csv
+|   +-- csic_database.csv
+|   +-- obfuscated_http_dataset.csv
+|   +-- obfuscated_grouped.csv
+|   +-- xss_payloads_with_obfuscated.csv
+|   +-- obfuscation_dataset_full.xlsx          # dataset cũ, chỉ giữ tham khảo
++-- preprocessing/
+|   +-- preprocess_data.py
 +-- cnn_lstm/
 |   +-- CNN_LSTM.py
 |   +-- CNN_LSTM.ipynb
-|   +-- artifacts/                  # generated locally, ignored by git
-|       +-- best_hybrid_cnn_lstm.keras
-|       +-- tokenizer.pkl
-|       +-- metadata_and_results.json
-|       +-- processed_data/
+|   +-- artifacts_cnn_lstm_by_dataset/
+|   +-- artifacts_cnn_lstm_tuning/
++-- cnn_only/
+|   +-- train_cnn_only.py
+|   +-- cnn_only_by_dataset.ipynb
+|   +-- artifacts_cnn_only_by_dataset/
++-- lstm_only/
+|   +-- artifacts_lstm_only_by_dataset/
++-- analysis/
+|   +-- analyze_cnn_lstm.py
+|   +-- evaluate_external_obfu.py
+|   +-- probe_evasion.py
+|   +-- obfu_eval_outputs/
++-- experiments/
 +-- webapp/
-|   +-- app.py                      # Flask backend
-|   +-- requirements.txt
-|   +-- templates/
-|   |   +-- index.html
-|   +-- static/
-|       +-- app.js
-|       +-- styles.css
-+-- SQLInjection_XSS_MixDataset.1.0.0.csv
-+-- csic_database.csv
-+-- obfuscation_dataset_full.xlsx                    # original attack-only robustness dataset
-+-- obfuscation_dataset_full_with_benign_shaped.xlsx # attack + shaped benign robustness dataset
 ```
 
-## Requirements
+## Vai Trò Dataset
 
-Use Python 3.10-3.12. A virtual environment is recommended.
-
-From the repository root:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate        # Linux/macOS/WSL
-# .venv\Scripts\activate         # Windows PowerShell
-python -m pip install --upgrade pip setuptools wheel
-python -m pip install -r webapp/requirements.txt
-```
-
-## Stage 1: Train And Evaluate The CNN-LSTM Model
-
-Download the datasets from Google Drive:
+Hai tập benchmark chính:
 
 ```text
-https://drive.google.com/drive/folders/1xzM_3EEYn79TUXTqee_HPub4hQcLaAJ8?usp=drive_link
+dataset/SQLInjection_XSS_MixDataset.1.0.0.csv
+dataset/csic_database.csv
 ```
 
-After downloading, place these files in the repository root:
+Tập obfuscation do nhóm tự xây dựng:
 
 ```text
-SQLInjection_XSS_MixDataset.1.0.0.csv
-csic_database.csv
-obfuscation_dataset_full_with_benign_shaped.xlsx
+dataset/obfuscated_http_dataset.csv
 ```
 
-Run training from the repository root:
+Hai tập obfuscation bên ngoài dùng để kiểm thử thêm:
+
+```text
+dataset/obfuscated_grouped.csv
+dataset/xss_payloads_with_obfuscated.csv
+```
+
+File `obfuscation_dataset_full.xlsx` là dataset cũ, không còn là tập
+obfuscation chính.
+
+## Tiền Xử Lý
+
+Toàn bộ pipeline tiền xử lý dùng chung nằm ở:
+
+```text
+preprocessing/preprocess_data.py
+```
+
+Nguyên tắc tiền xử lý:
+
+```text
+không URL decode
+không HTML unescape
+không chuyển lowercase
+chỉ chuẩn hóa whitespace
+token hóa theo từng ký tự
+```
+
+Với dữ liệu dạng HTTP, input được gom về một envelope thống nhất:
+
+```text
+[METHOD] ... [PATH] ... [QUERY] ... [BODY] ... [COOKIE] ... [CONTENT_TYPE] ... [USER_AGENT] ...
+```
+
+Với Kaggle và CSIC, dữ liệu được chia train/val/test có stratify theo nhãn.
+Với `obfuscated_http_dataset.csv`, pipeline dùng trực tiếp cột `split` đã có:
+
+```text
+train
+val
+test
+test_unseen_technique
+test_unseen_seed
+test_unseen_both
+```
+
+## Train CNN-LSTM
+
+Chạy từ thư mục gốc project:
 
 ```bash
 python cnn_lstm/CNN_LSTM.py
 ```
 
-For a quick smoke test on a small sample:
+Chạy nhanh để kiểm thử:
 
 ```bash
 python cnn_lstm/CNN_LSTM.py --sample-size 3000 --obfu-sample-size 1000 --epochs 3
 ```
 
-The script will:
-
-- load and clean the Kaggle SQLi/XSS dataset and CSIC dataset;
-- keep obfuscation evidence by only normalizing redundant whitespace;
-- split the base dataset into train, validation, and test sets;
-- keep the custom obfuscation dataset as a separate robustness test set, including both obfuscated attacks and shaped benign payload samples;
-- fit the char-level tokenizer on the train split only;
-- train the Hybrid CNN-LSTM model;
-- evaluate the model on the normal test set and the obfuscated test set.
-
-After training, generated outputs are saved in one by-dataset artifact root:
+Artifact của CNN-LSTM theo từng dataset được lưu tại:
 
 ```text
 cnn_lstm/artifacts_cnn_lstm_by_dataset/
 ```
 
-Important files:
+Model tuned đang dùng cho web app nằm tại:
 
 ```text
-cnn_lstm/artifacts_cnn_lstm_by_dataset/by_dataset/kaggle/
-cnn_lstm/artifacts_cnn_lstm_by_dataset/by_dataset/csic/
-cnn_lstm/artifacts_cnn_lstm_by_dataset/by_dataset/obfu_http/
-cnn_lstm/artifacts_cnn_lstm_by_dataset/processed_data_by_dataset/
-cnn_lstm/artifacts_cnn_lstm_by_dataset/experiment_results.json
+cnn_lstm/artifacts_cnn_lstm_tuning/obfu_http/final/
 ```
 
-`metadata_and_results.json` contains the overall training/evaluation summary, including:
-
-- dataset split summaries;
-- model configuration;
-- training history;
-- normal test metrics;
-- obfuscated test metrics;
-- confusion matrices;
-- classification reports.
-
-`cnn_lstm/artifacts_cnn_lstm_by_dataset/` is ignored by git because it contains generated models and outputs.
-
-## Stage 2: Run The Flask Web App
-
-The web app requires these files from Stage 1:
+Các file cần có:
 
 ```text
-cnn_lstm/artifacts_cnn_lstm_by_dataset/by_dataset/obfu_http/best_hybrid_cnn_lstm.keras
-cnn_lstm/artifacts_cnn_lstm_by_dataset/by_dataset/obfu_http/tokenizer.pkl
-cnn_lstm/artifacts_cnn_lstm_by_dataset/by_dataset/obfu_http/metadata_and_results.json
+best_tuned_hybrid_cnn_lstm.keras
+tokenizer.pkl
+metadata_and_results.json
 ```
 
-Start the Flask app:
+## Train CNN-Only Baseline
+
+Chạy từ thư mục gốc project:
+
+```bash
+python cnn_only/train_cnn_only.py
+```
+
+Artifact của CNN-only được lưu tại:
+
+```text
+cnn_only/artifacts_cnn_only_by_dataset/
+```
+
+CNN-only dùng cùng pipeline tiền xử lý với CNN-LSTM và đánh giá toàn bộ các
+split dạng `test*`, gồm cả các split unseen obfuscation.
+
+## Đánh Giá Tập Obfuscation Gộp
+
+Dùng artifact đã train sẵn để kiểm thử, không train lại:
+
+```bash
+python analysis/evaluate_external_obfu.py
+```
+
+Script này tạo tập kiểm thử gộp từ:
+
+```text
+dataset/obfuscated_http_dataset.csv        # chỉ lấy các split test*
+dataset/obfuscated_grouped.csv
+dataset/xss_payloads_with_obfuscated.csv
+```
+
+Output được lưu tại:
+
+```text
+analysis/obfu_eval_outputs/
+```
+
+Bảng kết quả chính:
+
+```text
+analysis/obfu_eval_outputs/external_obfu_eval_results.csv
+```
+
+Tên tập kiểm thử chính:
+
+```text
+combined_obfu_all_sources
+```
+
+File sau chỉ dùng cho thí nghiệm train lại trong tương lai, không dùng làm
+tập test chính cho artifact đã từng train trên `obfuscated_http_dataset.csv`:
+
+```text
+analysis/obfu_eval_outputs/combined_obfu_all_sources_full.csv
+```
+
+## Chạy Web App
+
+Cài thư viện:
+
+```bash
+python -m pip install -r webapp/requirements.txt
+```
+
+Khởi động app:
 
 ```bash
 cd webapp
 python app.py
 ```
 
-Open:
+Mở trình duyệt:
 
 ```text
 http://127.0.0.1:8000
 ```
 
-The web flow is:
-
-```text
-User input -> Flask backend -> tokenizer -> CNN-LSTM model -> prediction result -> frontend
-```
-
-## Health Check
-
-Open:
+Health check:
 
 ```text
 http://127.0.0.1:8000/api/health
 ```
 
-Expected important fields:
-
-```json
-{
-  "model_exists": true,
-  "tokenizer_exists": true,
-  "runtime": {
-    "tensorflow_importable": true,
-    "flask_importable": true
-  }
-}
-```
-
-If `model_exists` or `tokenizer_exists` is `false`, run Stage 1 first or copy the OBFU artifacts into `cnn_lstm/artifacts_cnn_lstm_by_dataset/by_dataset/obfu_http/`.
-
-## Prediction API
-
-Endpoint:
+Web app đang load model ở:
 
 ```text
-POST /api/predict
+cnn_lstm/artifacts_cnn_lstm_tuning/obfu_http/final/best_tuned_hybrid_cnn_lstm.keras
+cnn_lstm/artifacts_cnn_lstm_tuning/obfu_http/final/tokenizer.pkl
+cnn_lstm/artifacts_cnn_lstm_tuning/obfu_http/final/metadata_and_results.json
 ```
 
-Example request:
+## Ghi Chú
 
-```json
-{
-  "payload": "/search?q=' OR 1=1 --",
-  "threshold": 0.5
-}
+- Artifact sinh ra khi train được ignore bằng rule `**/artifacts*/`.
+- Dataset raw và các file CSV/XLSX sinh ra được ignore bằng rule `*.csv` và
+  `*.xlsx`.
+- Các file CSV cũ của bước đánh giá obfuscation đã được chuyển vào:
+
+```text
+analysis/obfu_eval_outputs/legacy/
 ```
-
-Example response:
-
-```json
-{
-  "ok": true,
-  "result": {
-    "label": 1,
-    "class_name": "Attack",
-    "attack_probability": 0.98,
-    "normal_probability": 0.02,
-    "threshold": 0.5
-  }
-}
-```
-
-## Notes
-
-- The backend uses the same preprocessing policy as `CNN_LSTM.py`: preserve payload evidence and normalize only redundant whitespace.
-- The tokenizer is loaded from `cnn_lstm/artifacts_cnn_lstm_by_dataset/by_dataset/obfu_http/tokenizer.pkl`.
-- The model is loaded from `cnn_lstm/artifacts_cnn_lstm_by_dataset/by_dataset/obfu_http/best_hybrid_cnn_lstm.keras` with `compile=False` for inference.

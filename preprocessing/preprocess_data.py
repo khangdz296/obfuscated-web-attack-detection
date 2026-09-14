@@ -12,10 +12,10 @@ from sklearn.model_selection import train_test_split
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = PROJECT_ROOT / "DataSet"
+DATA_DIR = PROJECT_ROOT / "dataset"
 KAGGLE_PATH = str(DATA_DIR / "SQLInjection_XSS_MixDataset.1.0.0.csv")
 CSIC_PATH = str(DATA_DIR / "csic_database.csv")
-OBFU_PATH = str(DATA_DIR / "obfu_http_dataset_v2.csv")
+OBFU_PATH = str(DATA_DIR / "obfuscated_http_dataset.csv")
 OUTPUT_DIR = str(PROJECT_ROOT / "cnn_lstm" / "artifacts" / "processed_data")
 RANDOM_STATE = 42
 DEFAULT_SPLIT_PROTOCOL = "random_stratified_row"

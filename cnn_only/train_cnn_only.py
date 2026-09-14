@@ -48,7 +48,7 @@ OBFUSCATION_PATH = pipeline.OBFUSCATION_PATH
 SEED = pipeline.SEED
 DECISION_THRESHOLD = pipeline.DECISION_THRESHOLD
 
-OUTPUT_DIR = str(MODEL_DIR / "artifacts_by_dataset")
+OUTPUT_DIR = str(MODEL_DIR / "artifacts_cnn_only_by_dataset")
 
 
 def build_cnn_model(vocab_size: int, max_len: int, embedding_dim: int) -> Sequential:
@@ -119,8 +119,21 @@ def train_and_evaluate_source_model(
     last_model_path = source_dir / "last_cnn_only.keras"
     tokenizer_path = source_dir / "tokenizer.pkl"
     callbacks = [
-        EarlyStopping(monitor="val_loss", patience=3, restore_best_weights=True, verbose=1),
-        ModelCheckpoint(str(best_model_path), monitor="val_loss", save_best_only=True, verbose=1),
+        EarlyStopping(
+            monitor="val_loss",
+            mode="min",
+            min_delta=pipeline.EARLY_STOPPING_MIN_DELTA,
+            patience=3,
+            restore_best_weights=True,
+            verbose=1,
+        ),
+        ModelCheckpoint(
+            str(best_model_path),
+            monitor="val_loss",
+            mode="min",
+            save_best_only=True,
+            verbose=1,
+        ),
     ]
 
     started = time.perf_counter()
@@ -143,19 +156,22 @@ def train_and_evaluate_source_model(
     evaluations = {}
     summary_rows = []
     for test_source, splits in dataset_splits.items():
-        test_df = splits["test"]
-        X_test = pipeline.vectorize(tokenizer, test_df["payload"], args.max_len)
-        y_test = test_df["label"].to_numpy(dtype=np.int32)
-        result = pipeline.evaluate_model(
-            model,
-            X_test,
-            y_test,
-            f"{train_source} CNN-only model on {test_source} test",
-            args.batch_size,
-            DECISION_THRESHOLD,
-        )
-        evaluations[test_source] = result
-        summary_rows.append(pipeline.evaluation_summary_row(train_source, test_source, result))
+        test_split_names = sorted(name for name in splits if name.startswith("test"))
+        for split_name in test_split_names:
+            test_df = splits[split_name]
+            X_test = pipeline.vectorize(tokenizer, test_df["payload"], args.max_len)
+            y_test = test_df["label"].to_numpy(dtype=np.int32)
+            result = pipeline.evaluate_model(
+                model,
+                X_test,
+                y_test,
+                f"{train_source} CNN-only model on {test_source} {split_name}",
+                args.batch_size,
+                DECISION_THRESHOLD,
+            )
+            result_key = test_source if split_name == "test" else f"{test_source}:{split_name}"
+            evaluations[result_key] = result
+            summary_rows.append(pipeline.evaluation_summary_row(train_source, result_key, result))
 
     model_metadata = {
         "train_source": train_source,
@@ -219,7 +235,7 @@ def parse_args() -> argparse.Namespace:
         "--train-sources",
         nargs="+",
         default=["all"],
-        help="Datasets to train separate CNN-only models for: all, kaggle, csic, obfuscation.",
+        help="Datasets to train separate CNN-only models for: all, kaggle, csic, obfu_http.",
     )
     return parser.parse_args()
 
