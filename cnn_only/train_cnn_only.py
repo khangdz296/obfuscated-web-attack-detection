@@ -51,25 +51,33 @@ DECISION_THRESHOLD = pipeline.DECISION_THRESHOLD
 OUTPUT_DIR = str(MODEL_DIR / "artifacts_cnn_only_by_dataset")
 
 
-def build_cnn_model(vocab_size: int, max_len: int, embedding_dim: int) -> Sequential:
+def build_cnn_model(
+    vocab_size: int,
+    max_len: int,
+    embedding_dim: int,
+    cnn_filters: int = 128,
+    dense_units: int = 64,
+    dropout: float = 0.3,
+    learning_rate: float = 1e-3,
+) -> Sequential:
     """CNN-only ablation: same Conv blocks as CNN-LSTM, no recurrent layer."""
     model = Sequential(name="CNN_Only_Web_Attack_Detector")
     model.add(Input(shape=(max_len,), name="payload_tokens"))
     model.add(Embedding(vocab_size, embedding_dim, name="char_embedding"))
 
-    model.add(Conv1D(128, 3, padding="same", activation="relu", name="conv_k3"))
+    model.add(Conv1D(cnn_filters, 3, padding="same", activation="relu", name="conv_k3"))
     model.add(MaxPooling1D(pool_size=4, name="pool_1"))
 
-    model.add(Conv1D(128, 5, padding="same", activation="relu", name="conv_k5"))
+    model.add(Conv1D(cnn_filters, 5, padding="same", activation="relu", name="conv_k5"))
     model.add(MaxPooling1D(pool_size=4, name="pool_2"))
 
     model.add(GlobalMaxPooling1D(name="global_max_pool"))
-    model.add(Dense(64, activation="relu", name="dense_classifier"))
-    model.add(Dropout(0.3, name="dropout"))
+    model.add(Dense(dense_units, activation="relu", name="dense_classifier"))
+    model.add(Dropout(dropout, name="dropout"))
     model.add(Dense(1, activation="sigmoid", name="attack_probability"))
 
     model.compile(
-        optimizer=Adam(learning_rate=1e-3),
+        optimizer=Adam(learning_rate=learning_rate),
         loss="binary_crossentropy",
         metrics=[
             "accuracy",
