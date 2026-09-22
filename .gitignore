@@ -16,6 +16,12 @@ myvenv/
 *.docx
 *.lnk
 
+# Local analysis helpers
+analysis/compare_merged_models.py
+analysis/evaluate_external_obfu.py
+analysis/evaluate_merged_cnn_only.py
+analysis/evaluate_merged_external.py
+
 # OS/editor noise
 .vscode/
 reports/
