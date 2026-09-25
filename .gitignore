@@ -16,6 +16,13 @@ myvenv/
 *.docx
 *.lnk
 
+# Temporary report extraction and visual-QA workspaces
+/.audit_report_*/
+/.docx_*/
+/.qa_*/
+/.report_for_images/
+/.report_for_images.zip
+
 # Local analysis helpers
 analysis/compare_merged_models.py
 analysis/evaluate_external_obfu.py
