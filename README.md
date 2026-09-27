@@ -118,10 +118,10 @@ Artifact của CNN-LSTM theo từng dataset được lưu tại:
 cnn_lstm/artifacts_cnn_lstm_by_dataset/
 ```
 
-Model tuned đang dùng cho web app nằm tại:
+Model tuned 768 đang dùng cho WebApp và detector DVWA nằm tại:
 
 ```text
-cnn_lstm/artifacts_cnn_lstm_tuning/obfu_http/final/
+cnn_lstm/artifacts_cnn_lstm_tuning_768/obfu_http/final/
 ```
 
 Các file cần có:
@@ -217,13 +217,38 @@ Health check:
 http://127.0.0.1:8000/api/health
 ```
 
-Web app đang load model ở:
+Web app đang load model tuned 768 ở:
 
 ```text
-cnn_lstm/artifacts_cnn_lstm_tuning/obfu_http/final/best_tuned_hybrid_cnn_lstm.keras
-cnn_lstm/artifacts_cnn_lstm_tuning/obfu_http/final/tokenizer.pkl
-cnn_lstm/artifacts_cnn_lstm_tuning/obfu_http/final/metadata_and_results.json
+cnn_lstm/artifacts_cnn_lstm_tuning_768/obfu_http/final/best_tuned_hybrid_cnn_lstm.keras
+cnn_lstm/artifacts_cnn_lstm_tuning_768/obfu_http/final/tokenizer.pkl
+cnn_lstm/artifacts_cnn_lstm_tuning_768/obfu_http/final/metadata_and_results.json
 ```
+
+## Tích hợp detector vào DVWA
+
+DVWA nằm tại `DVWA/DVWA/DVWA`. PHP hook trong `detector/hook.php` được nạp
+trước mọi trang bài tập qua `auto_prepend_file`, quét tham số GET, POST và
+COOKIE, sau đó gọi API detector tại `http://host.docker.internal:8000/api/predict`.
+Hook chỉ hiển thị cảnh báo để giữ nguyên mục tiêu thực nghiệm của DVWA; request
+không bị chặn hoặc sửa nội dung.
+
+Khởi động detector để container có thể truy cập từ Docker Desktop:
+
+```powershell
+$env:DETECTOR_HOST = "0.0.0.0"
+.\.venv-webapp\Scripts\python.exe webapp\app.py
+```
+
+Trong terminal khác, khởi động DVWA:
+
+```powershell
+cd DVWA\DVWA\DVWA
+docker compose up -d
+```
+
+DVWA được mở tại `http://127.0.0.1:4280`. Endpoint `/api/predict` trả về trường
+`max_len=768`, cho phép kiểm tra trực tiếp rằng hook đang gọi đúng checkpoint.
 
 ## Ghi Chú
 
