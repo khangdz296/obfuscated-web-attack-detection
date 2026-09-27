@@ -40,7 +40,7 @@ reports/
 webapp/*.log
 ~$*.docx
 ~WRL*.tmp
-/analysis/
-/.agents/
-/scripts/
-/DVWA/
+analysis/
+.agents/
+scripts/
+DVWA/
