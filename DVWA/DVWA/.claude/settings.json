@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/MKhang/Desktop/NCKH-T9/obfuscated-web-attack-detection/preprocessing/**)",
+      "PowerShell(docker compose -f C:\\\\Users\\\\MKhang\\\\Desktop\\\\DVWA\\\\DVWA\\\\compose.yml ps)",
+      "Bash(docker exec *)"
+    ]
+  }
+}

@@ -9,6 +9,7 @@ Then open:
 """
 
 import json
+import os
 import pickle
 import sys
 from functools import lru_cache
@@ -25,21 +26,24 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from preprocessing.preprocess_data import preprocess_inference_input
 
-ARTIFACTS_DIR = (
+DEFAULT_ARTIFACTS_DIR = (
     PROJECT_ROOT
     / "cnn_lstm"
-    / "artifacts_cnn_lstm_tuning"
+    / "artifacts_cnn_lstm_tuning_768"
     / "obfu_http"
     / "final"
 )
+ARTIFACTS_DIR = Path(
+    os.environ.get("CNN_LSTM_ARTIFACTS_DIR", str(DEFAULT_ARTIFACTS_DIR))
+).expanduser().resolve()
 MODEL_PATH = ARTIFACTS_DIR / "best_tuned_hybrid_cnn_lstm.keras"
 TOKENIZER_PATH = ARTIFACTS_DIR / "tokenizer.pkl"
 METADATA_PATH = ARTIFACTS_DIR / "metadata_and_results.json"
-DEFAULT_MAX_LEN = 1024
+DEFAULT_MAX_LEN = 768
 DEFAULT_THRESHOLD = 0.5
 MAX_INPUT_CHARS = 100_000
-HOST = "127.0.0.1"
-PORT = 8000
+HOST = os.environ.get("DETECTOR_HOST", "127.0.0.1")
+PORT = int(os.environ.get("DETECTOR_PORT", "8000"))
 
 app = Flask(__name__)
 
@@ -153,13 +157,21 @@ def index():
 
 @app.get("/api/health")
 def health():
+    metadata = load_metadata()
     return jsonify(
         {
             "ok": True,
+            "model_variant": "CNN-LSTM tuned max_len=768",
             "model_exists": MODEL_PATH.exists(),
             "tokenizer_exists": TOKENIZER_PATH.exists(),
             "model_path": str(MODEL_PATH),
             "tokenizer_path": str(TOKENIZER_PATH),
+            "metadata_path": str(METADATA_PATH),
+            "metadata_max_len": metadata.get("model", {}).get(
+                "max_len",
+                metadata.get("max_len"),
+            ),
+            "threshold": metadata.get("threshold", DEFAULT_THRESHOLD),
             "runtime": get_runtime_status(),
         }
     )
